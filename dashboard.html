@@ -33,8 +33,15 @@
           </div>
         </div>
 
+        <div class="input-group" style="background: #f0fdf4; border: 1px solid var(--success)">
+          <h3 style="margin-top: 0; color: var(--success)">⚡ Copas dari WA</h3>
+          <p style="font-size: 11px; color: #666; margin-top: -5px; margin-bottom: 10px">Format: [Angka]k [Spasi] [Keterangan]. <br />Contoh: <i>18k soya</i> atau <i>25 ribu cumi</i></p>
+          <textarea id="bulk-text" class="form-control" rows="4" placeholder="18k soya&#10;10k lotis&#10;20k pempek"></textarea>
+          <button type="button" class="btn" onclick="processBulk()" style="background: var(--success)">Proses Copas</button>
+        </div>
+
         <div class="input-group" id="input-card">
-          <h3 id="form-title">Tambah Transaksi</h3>
+          <h3 id="form-title">Input Manual</h3>
           <form id="form">
             <input type="hidden" id="edit-id" />
             <div class="form-row">
@@ -45,15 +52,16 @@
               </select>
             </div>
             <input type="text" id="text" class="form-control" placeholder="Keterangan" required />
-            <input list="categories" id="category" class="form-control" placeholder="Kategori" required />
-            <datalist id="categories">
-              <option value="Gaji"></option>
-              <option value="Bonus"></option>
-              <option value="Makan"></option>
-              <option value="Belanja"></option>
-              <option value="Transport"></option>
-              <option value="Tagihan"></option>
-            </datalist>
+
+            <select id="category" class="form-control" required>
+              <option value="Jajan">Jajan</option>
+              <option value="Groceries">Groceries</option>
+              <option value="Saving">Saving</option>
+              <option value="Entertainment">Entertainment</option>
+              <option value="Transport">Transport</option>
+              <option value="Utilities">Utilities</option>
+              <option value="Kopi">Kopi</option>
+            </select>
 
             <input type="number" id="amount" class="form-control" placeholder="Jumlah (Rp)" required />
             <button type="submit" id="submit-btn" class="btn">Simpan</button>
@@ -106,7 +114,7 @@
 
           <div class="summary-grid" style="margin-top: 20px">
             <div class="text-center">
-              <small>Sisa Saldo</small>
+              <small>Sisa Saldo Filter</small>
               <p id="filter-total" style="font-weight: bold; margin: 5px 0">Rp 0</p>
             </div>
           </div>
@@ -171,7 +179,7 @@
       document.getElementById("welcome-msg").innerText = "Halo, " + currentUser;
 
       let chartInstance = null;
-      let allTransactions = []; // Menyimpan semua data mentah
+      let allTransactions = [];
       const form = document.getElementById("form");
       const loading = document.getElementById("loading");
       let isEditing = false;
@@ -201,7 +209,7 @@
         if (tab === "summary") renderSummaryTable();
       }
 
-      // --- DATA HANDLING ---
+      // --- DATA HANDLING: MANUAL ---
       form.addEventListener("submit", function (e) {
         e.preventDefault();
         const type = document.getElementById("type").value;
@@ -227,10 +235,11 @@
           .then((res) => {
             loading.style.display = "none";
             if (res.result === "success") {
-              alert("Berhasil!");
               if (isEditing) cancelEdit();
-              else form.reset();
-              document.getElementById("date").valueAsDate = new Date();
+              else {
+                form.reset();
+                document.getElementById("date").valueAsDate = new Date();
+              }
               fetchData();
             } else {
               alert("Gagal: " + res.message);
@@ -239,6 +248,68 @@
           .catch((err) => {
             alert("Koneksi Error");
             loading.style.display = "none";
+          });
+      }
+
+      // --- FITUR COPAS WA ---
+      window.processBulk = function () {
+        const text = document.getElementById("bulk-text").value.trim();
+        if (!text) return alert("Teks masih kosong!");
+
+        const lines = text.split("\n");
+        const bulkData = [];
+        const dateVal = document.getElementById("date").value;
+
+        lines.forEach((line, index) => {
+          // Deteksi angka + huruf (k/rb/ribu) + spasi + teks
+          const match = line.trim().match(/^(\d+(?:[\.,]\d+)?)\s*(k|rb|ribu)?\s+(.+)$/i);
+          if (match) {
+            let amount = parseFloat(match[1].replace(",", "."));
+            const multiplier = match[2] ? match[2].toLowerCase() : "";
+
+            if (multiplier === "k" || multiplier === "rb" || multiplier === "ribu") {
+              amount *= 1000;
+            }
+
+            const desc = match[3].trim();
+
+            bulkData.push({
+              id: new Date().getTime() + index,
+              date: dateVal,
+              type: "expense",
+              text: desc,
+              category: "Jajan", // Default Copas WA -> Jajan
+              amount: -Math.abs(amount),
+              user: currentUser,
+            });
+          }
+        });
+
+        if (bulkData.length === 0) {
+          return alert("Format tidak terbaca.\nPastikan formatnya: [Angka]k [Spasi] [Keterangan]\nContoh: 18k soya");
+        }
+
+        if (confirm(`Siap menyimpan ${bulkData.length} data pengeluaran?`)) {
+          sendBulkData({ action: "add_bulk", data: bulkData });
+        }
+      };
+
+      function sendBulkData(payload) {
+        loading.style.display = "block";
+        fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify(payload) })
+          .then((res) => res.json())
+          .then((res) => {
+            loading.style.display = "none";
+            if (res.result === "success") {
+              document.getElementById("bulk-text").value = "";
+              fetchData();
+            } else {
+              alert("Gagal: " + res.message);
+            }
+          })
+          .catch((err) => {
+            loading.style.display = "none";
+            alert("Error Koneksi.");
           });
       }
 
@@ -254,10 +325,106 @@
               populateCategoryFilter(allTransactions);
               applyFilter();
               populateSummaryYears();
-              renderSummaryTable();
+              if (document.getElementById("view-summary").classList.contains("active")) {
+                renderSummaryTable();
+              }
             }
           });
       }
+
+      // --- DOM UPDATES ---
+      function updateDOM(transactions) {
+        const list = document.getElementById("list");
+        const balance = document.getElementById("balance");
+        const money_plus = document.getElementById("money-plus");
+        const money_minus = document.getElementById("money-minus");
+
+        list.innerHTML = "";
+        if (!transactions) return;
+
+        // FILTER HANYA BULAN INI UNTUK CARD ATAS
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        const currentMonthTransactions = transactions.filter((t) => {
+          const tDate = new Date(t.date);
+          return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
+        });
+
+        const amountsThisMonth = currentMonthTransactions.map((t) => Number(t.amount));
+        const totalThisMonth = amountsThisMonth.reduce((acc, item) => (acc += item), 0);
+        const incomeThisMonth = amountsThisMonth.filter((item) => item > 0).reduce((acc, item) => (acc += item), 0);
+        const expenseThisMonth = amountsThisMonth.filter((item) => item < 0).reduce((acc, item) => (acc += item), 0) * -1;
+
+        balance.innerText = formatRupiah(totalThisMonth);
+        money_plus.innerText = `+${formatRupiah(incomeThisMonth)}`;
+        money_minus.innerText = `-${formatRupiah(expenseThisMonth)}`;
+
+        // RENDER LIST TETAP SEMUA TRANSAKSI TERBARU
+        transactions
+          .slice()
+          .reverse()
+          .forEach((t) => {
+            const sign = t.amount < 0 ? "-" : "+";
+            const item = document.createElement("li");
+            item.classList.add("history-item");
+            item.classList.add(t.amount < 0 ? "minus" : "plus");
+
+            const safeText = t.text.replace(/'/g, "\\'");
+            const safeCat = t.category.replace(/'/g, "\\'");
+            const userBadge = t.user ? `<span class="user-badge">${t.user}</span>` : "";
+
+            item.innerHTML = `
+                <div style="flex-grow:1">
+                    <div style="display:flex; align-items:center"><strong>${t.text}</strong> ${userBadge}</div>
+                    <span style="font-size:12px; color:#666">${t.category} • ${t.date.split("T")[0]}</span>
+                </div>
+                <div style="text-align:right">
+                    <span>${sign}${formatRupiah(Math.abs(t.amount))}</span>
+                    <div style="margin-top:5px">
+                        <button class="btn-mini btn-edit" onclick="startEdit('${t.id}', '${t.date}', '${safeText}', '${safeCat}', ${t.amount})">Edit</button>
+                        <button class="btn-mini btn-delete" onclick="deleteItem('${t.id}')">Hapus</button>
+                    </div>
+                </div>`;
+            list.appendChild(item);
+          });
+      }
+
+      function formatRupiah(n) {
+        return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
+      }
+
+      window.startEdit = function (id, date, text, category, amount) {
+        switchTab("home");
+        isEditing = true;
+        document.getElementById("input-card").scrollIntoView({ behavior: "smooth" });
+        document.getElementById("input-card").classList.add("editing");
+        document.getElementById("form-title").innerText = "Edit Transaksi";
+        document.getElementById("submit-btn").innerText = "Update";
+        document.getElementById("cancel-btn").style.display = "block";
+
+        document.getElementById("edit-id").value = id;
+        document.getElementById("date").value = date.split("T")[0];
+        document.getElementById("text").value = text;
+        document.getElementById("category").value = category;
+        document.getElementById("amount").value = Math.abs(amount);
+        document.getElementById("type").value = amount < 0 ? "expense" : "income";
+      };
+
+      window.cancelEdit = function () {
+        isEditing = false;
+        form.reset();
+        document.getElementById("date").valueAsDate = new Date();
+        document.getElementById("input-card").classList.remove("editing");
+        document.getElementById("form-title").innerText = "Input Manual";
+        document.getElementById("submit-btn").innerText = "Simpan";
+        document.getElementById("cancel-btn").style.display = "none";
+      };
+
+      window.deleteItem = function (id) {
+        if (confirm("Hapus data ini?")) sendData({ action: "delete", id: id });
+      };
 
       // --- FILTER & CHART LOGIC ---
       function populateCategoryFilter(data) {
@@ -370,100 +537,6 @@
           },
         });
       }
-
-      // --- DOM UPDATES (DIPERBARUI UNTUK SISA SALDO BULAN INI) ---
-      function updateDOM(transactions) {
-        const list = document.getElementById("list");
-        const balance = document.getElementById("balance");
-        const money_plus = document.getElementById("money-plus");
-        const money_minus = document.getElementById("money-minus");
-
-        list.innerHTML = "";
-        if (!transactions) return;
-
-        // FILTER HANYA BULAN INI UNTUK CARD ATAS
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-
-        const currentMonthTransactions = transactions.filter((t) => {
-          const tDate = new Date(t.date);
-          return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
-        });
-
-        const amountsThisMonth = currentMonthTransactions.map((t) => Number(t.amount));
-        const totalThisMonth = amountsThisMonth.reduce((acc, item) => (acc += item), 0);
-        const incomeThisMonth = amountsThisMonth.filter((item) => item > 0).reduce((acc, item) => (acc += item), 0);
-        const expenseThisMonth = amountsThisMonth.filter((item) => item < 0).reduce((acc, item) => (acc += item), 0) * -1;
-
-        balance.innerText = formatRupiah(totalThisMonth);
-        money_plus.innerText = `+${formatRupiah(incomeThisMonth)}`;
-        money_minus.innerText = `-${formatRupiah(expenseThisMonth)}`;
-
-        // RENDER LIST TETAP SEMUA TRANSAKSI TERBARU
-        transactions
-          .slice()
-          .reverse()
-          .forEach((t) => {
-            const sign = t.amount < 0 ? "-" : "+";
-            const item = document.createElement("li");
-            item.classList.add("history-item");
-            item.classList.add(t.amount < 0 ? "minus" : "plus");
-
-            const safeText = t.text.replace(/'/g, "\\'");
-            const safeCat = t.category.replace(/'/g, "\\'");
-            const userBadge = t.user ? `<span class="user-badge">${t.user}</span>` : "";
-
-            item.innerHTML = `
-                <div style="flex-grow:1">
-                    <div style="display:flex; align-items:center"><strong>${t.text}</strong> ${userBadge}</div>
-                    <span style="font-size:12px; color:#666">${t.category} • ${t.date.split("T")[0]}</span>
-                </div>
-                <div style="text-align:right">
-                    <span>${sign}${formatRupiah(Math.abs(t.amount))}</span>
-                    <div style="margin-top:5px">
-                        <button class="btn-mini btn-edit" onclick="startEdit('${t.id}', '${t.date}', '${safeText}', '${safeCat}', ${t.amount})">Edit</button>
-                        <button class="btn-mini btn-delete" onclick="deleteItem('${t.id}')">Hapus</button>
-                    </div>
-                </div>`;
-            list.appendChild(item);
-          });
-      }
-
-      function formatRupiah(n) {
-        return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
-      }
-
-      window.startEdit = function (id, date, text, category, amount) {
-        switchTab("home");
-        isEditing = true;
-        document.getElementById("input-card").scrollIntoView({ behavior: "smooth" });
-        document.getElementById("input-card").classList.add("editing");
-        document.getElementById("form-title").innerText = "Edit Transaksi";
-        document.getElementById("submit-btn").innerText = "Update";
-        document.getElementById("cancel-btn").style.display = "block";
-
-        document.getElementById("edit-id").value = id;
-        document.getElementById("date").value = date.split("T")[0];
-        document.getElementById("text").value = text;
-        document.getElementById("category").value = category;
-        document.getElementById("amount").value = Math.abs(amount);
-        document.getElementById("type").value = amount < 0 ? "expense" : "income";
-      };
-
-      window.cancelEdit = function () {
-        isEditing = false;
-        form.reset();
-        document.getElementById("date").valueAsDate = new Date();
-        document.getElementById("input-card").classList.remove("editing");
-        document.getElementById("form-title").innerText = "Tambah Transaksi";
-        document.getElementById("submit-btn").innerText = "Simpan";
-        document.getElementById("cancel-btn").style.display = "none";
-      };
-
-      window.deleteItem = function (id) {
-        if (confirm("Hapus data ini?")) sendData({ action: "delete", id: id });
-      };
 
       // --- LOGIC SUMMARY TAHUNAN ---
       function populateSummaryYears() {
