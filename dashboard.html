@@ -36,8 +36,17 @@
         <div class="input-group" style="background: #f0fdf4; border: 1px solid var(--success)">
           <h3 style="margin-top: 0; color: var(--success)">⚡ Copas dari WA</h3>
           <p style="font-size: 11px; color: #666; margin-top: -5px; margin-bottom: 10px">Format: [Angka]k [Spasi] [Keterangan]. <br />Contoh: <i>18k soya</i> atau <i>25 ribu cumi</i></p>
-          <textarea id="bulk-text" class="form-control" rows="4" placeholder="18k soya&#10;10k lotis&#10;20k pempek"></textarea>
+          <textarea id="bulk-text" class="form-control" rows="4" placeholder="50k sayur pagi&#10;55k soto hj fatima&#10;500k belanja goro"></textarea>
           <button type="button" class="btn" onclick="processBulk()" style="background: var(--success)">Proses Copas</button>
+        </div>
+
+        <div class="input-group" id="bulk-preview-card" style="display: none; border: 2px solid var(--primary); background: #eff6ff">
+          <h3 style="margin-top: 0; color: var(--primary)">Cek & Ubah Kategori</h3>
+          <div id="bulk-preview-list"></div>
+          <div style="display: flex; gap: 10px; margin-top: 15px">
+            <button type="button" class="btn" onclick="submitBulkData()">Simpan Semua</button>
+            <button type="button" class="btn btn-cancel" style="display: block; margin-top: 0" onclick="cancelBulkPreview()">Batal</button>
+          </div>
         </div>
 
         <div class="input-group" id="input-card">
@@ -75,15 +84,14 @@
 
       <div id="view-chart" class="view-section">
         <h3 class="text-center">Filter Statistik</h3>
-
         <div class="filter-container">
           <div class="filter-row">
             <div>
-              <span class="filter-label">Dari Tanggal</span>
+              <span class="filter-label">Dari</span>
               <input type="date" id="filter-start" class="filter-control" onchange="applyFilter()" />
             </div>
             <div>
-              <span class="filter-label">Sampai Tanggal</span>
+              <span class="filter-label">Sampai</span>
               <input type="date" id="filter-end" class="filter-control" onchange="applyFilter()" />
             </div>
           </div>
@@ -111,10 +119,9 @@
           <div class="chart-wrapper">
             <canvas id="expenseChart"></canvas>
           </div>
-
           <div class="summary-grid" style="margin-top: 20px">
             <div class="text-center">
-              <small>Sisa Saldo Filter</small>
+              <small>Total Bersih Filter</small>
               <p id="filter-total" style="font-weight: bold; margin: 5px 0">Rp 0</p>
             </div>
           </div>
@@ -123,12 +130,10 @@
 
       <div id="view-summary" class="view-section">
         <h3 class="text-center">Rekap Tahunan</h3>
-
         <div class="filter-container" style="margin-bottom: 0">
           <span class="filter-label">Pilih Tahun</span>
           <select id="summary-year" class="filter-control" onchange="renderSummaryTable()"></select>
         </div>
-
         <div class="table-responsive">
           <table class="summary-table" id="summary-table">
             <thead>
@@ -170,9 +175,7 @@
     </div>
 
     <script>
-      // --- MASUKKAN URL GOOGLE SCRIPT ---
-      const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwkEam74ZMFuskgfq9nzEkn3imJfPRQpV38SleairvjbKO_W28iVkJ8tS8G8fdwQ2Ze7Q/exec";
-      // ----------------------------------
+      const SCRIPT_URL = "MASUKKAN_URL_SCRIPT_LO_DI_SINI";
 
       const currentUser = localStorage.getItem("currentUser");
       if (!currentUser) window.location.href = "index.html";
@@ -180,14 +183,12 @@
 
       let chartInstance = null;
       let allTransactions = [];
+      let pendingBulkData = [];
       const form = document.getElementById("form");
       const loading = document.getElementById("loading");
       let isEditing = false;
 
-      // Set Default Date hari ini
       document.getElementById("date").valueAsDate = new Date();
-
-      // Set Filter Default (Awal bulan ini s/d Hari ini)
       const today = new Date();
       const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
       document.getElementById("filter-end").valueAsDate = today;
@@ -204,29 +205,25 @@
         document.querySelectorAll(".view-section, .nav-item").forEach((el) => el.classList.remove("active"));
         document.getElementById("view-" + tab).classList.add("active");
         document.getElementById("nav-" + tab).classList.add("active");
-
         if (tab === "chart") applyFilter();
         if (tab === "summary") renderSummaryTable();
       }
 
-      // --- DATA HANDLING: MANUAL ---
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        const type = document.getElementById("type").value;
-        const amountVal = document.getElementById("amount").value;
-
-        const data = {
-          action: isEditing ? "edit" : "add",
-          id: isEditing ? document.getElementById("edit-id").value : new Date().getTime(),
-          date: document.getElementById("date").value,
-          type: type,
-          text: document.getElementById("text").value,
-          category: document.getElementById("category").value,
-          amount: type === "expense" ? -Math.abs(amountVal) : Math.abs(amountVal),
-          user: currentUser,
-        };
-        sendData(data);
-      });
+      function fetchData() {
+        loading.style.display = "block";
+        fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify({ action: "get" }) })
+          .then((res) => res.json())
+          .then((res) => {
+            loading.style.display = "none";
+            if (res.result === "success") {
+              allTransactions = res.data;
+              updateDOM(allTransactions);
+              populateCategoryFilter(allTransactions);
+              applyFilter();
+              populateSummaryYears();
+            }
+          });
+      }
 
       function sendData(data) {
         loading.style.display = "block";
@@ -244,149 +241,109 @@
             } else {
               alert("Gagal: " + res.message);
             }
-          })
-          .catch((err) => {
-            alert("Koneksi Error");
-            loading.style.display = "none";
           });
       }
 
-      // --- FITUR COPAS WA ---
+      // --- COPAS WA LOGIC ---
       window.processBulk = function () {
         const text = document.getElementById("bulk-text").value.trim();
         if (!text) return alert("Teks masih kosong!");
-
         const lines = text.split("\n");
-        const bulkData = [];
+        pendingBulkData = [];
         const dateVal = document.getElementById("date").value;
+        const defaultCat = document.getElementById("category").value;
 
         lines.forEach((line, index) => {
-          // Deteksi angka + huruf (k/rb/ribu) + spasi + teks
           const match = line.trim().match(/^(\d+(?:[\.,]\d+)?)\s*(k|rb|ribu)?\s+(.+)$/i);
           if (match) {
             let amount = parseFloat(match[1].replace(",", "."));
-            const multiplier = match[2] ? match[2].toLowerCase() : "";
-
-            if (multiplier === "k" || multiplier === "rb" || multiplier === "ribu") {
-              amount *= 1000;
-            }
-
-            const desc = match[3].trim();
-
-            bulkData.push({
+            const mult = match[2] ? match[2].toLowerCase() : "";
+            if (mult === "k" || mult === "rb" || mult === "ribu") amount *= 1000;
+            pendingBulkData.push({
               id: new Date().getTime() + index,
               date: dateVal,
               type: "expense",
-              text: desc,
-              category: "Jajan", // Default Copas WA -> Jajan
+              text: match[3].trim(),
+              category: defaultCat,
               amount: -Math.abs(amount),
               user: currentUser,
             });
           }
         });
-
-        if (bulkData.length === 0) {
-          return alert("Format tidak terbaca.\nPastikan formatnya: [Angka]k [Spasi] [Keterangan]\nContoh: 18k soya");
-        }
-
-        if (confirm(`Siap menyimpan ${bulkData.length} data pengeluaran?`)) {
-          sendBulkData({ action: "add_bulk", data: bulkData });
-        }
+        if (pendingBulkData.length === 0) return alert("Format tidak terbaca (Contoh: 18k soya)");
+        renderBulkPreview();
       };
 
-      function sendBulkData(payload) {
+      function renderBulkPreview() {
+        document.getElementById("bulk-preview-card").style.display = "block";
+        const listDiv = document.getElementById("bulk-preview-list");
+        listDiv.innerHTML = "";
+        const catOptions = `<option value="Jajan">Jajan</option><option value="Groceries">Groceries</option><option value="Saving">Saving</option><option value="Entertainment">Entertainment</option><option value="Transport">Transport</option><option value="Utilities">Utilities</option><option value="Kopi">Kopi</option>`;
+
+        pendingBulkData.forEach((item, index) => {
+          listDiv.innerHTML += `
+            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px; background: white; padding: 8px; border-radius: 6px;">
+              <div style="flex: 1; font-size: 13px;"><strong>${item.text}</strong><br><span style="color:var(--danger)">${formatRupiah(Math.abs(item.amount))}</span></div>
+              <select id="preview-cat-${index}" class="form-control" style="margin-bottom:0; width:110px; font-size:11px;">${catOptions}</select>
+            </div>`;
+        });
+        pendingBulkData.forEach((item, index) => {
+          document.getElementById(`preview-cat-${index}`).value = item.category;
+        });
+      }
+
+      window.submitBulkData = function () {
+        pendingBulkData.forEach((item, index) => {
+          item.category = document.getElementById(`preview-cat-${index}`).value;
+        });
         loading.style.display = "block";
-        fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify(payload) })
+        fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify({ action: "add_bulk", data: pendingBulkData }) })
           .then((res) => res.json())
           .then((res) => {
             loading.style.display = "none";
             if (res.result === "success") {
               document.getElementById("bulk-text").value = "";
+              cancelBulkPreview();
               fetchData();
-            } else {
-              alert("Gagal: " + res.message);
-            }
-          })
-          .catch((err) => {
-            loading.style.display = "none";
-            alert("Error Koneksi.");
-          });
-      }
-
-      function fetchData() {
-        loading.style.display = "block";
-        fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify({ action: "get" }) })
-          .then((res) => res.json())
-          .then((res) => {
-            loading.style.display = "none";
-            if (res.result === "success") {
-              allTransactions = res.data;
-              updateDOM(allTransactions);
-              populateCategoryFilter(allTransactions);
-              applyFilter();
-              populateSummaryYears();
-              if (document.getElementById("view-summary").classList.contains("active")) {
-                renderSummaryTable();
-              }
             }
           });
-      }
+      };
 
-      // --- DOM UPDATES ---
+      window.cancelBulkPreview = function () {
+        document.getElementById("bulk-preview-card").style.display = "none";
+        pendingBulkData = [];
+      };
+
+      // --- UI UPDATES ---
       function updateDOM(transactions) {
         const list = document.getElementById("list");
-        const balance = document.getElementById("balance");
-        const money_plus = document.getElementById("money-plus");
-        const money_minus = document.getElementById("money-minus");
-
-        list.innerHTML = "";
-        if (!transactions) return;
-
-        // FILTER HANYA BULAN INI UNTUK CARD ATAS
         const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
+        const curM = now.getMonth();
+        const curY = now.getFullYear();
 
-        const currentMonthTransactions = transactions.filter((t) => {
-          const tDate = new Date(t.date);
-          return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
+        const curMonthData = transactions.filter((t) => {
+          const d = new Date(t.date);
+          return d.getMonth() === curM && d.getFullYear() === curY;
         });
 
-        const amountsThisMonth = currentMonthTransactions.map((t) => Number(t.amount));
-        const totalThisMonth = amountsThisMonth.reduce((acc, item) => (acc += item), 0);
-        const incomeThisMonth = amountsThisMonth.filter((item) => item > 0).reduce((acc, item) => (acc += item), 0);
-        const expenseThisMonth = amountsThisMonth.filter((item) => item < 0).reduce((acc, item) => (acc += item), 0) * -1;
+        const amounts = curMonthData.map((t) => Number(t.amount));
+        document.getElementById("balance").innerText = formatRupiah(amounts.reduce((a, b) => a + b, 0));
+        document.getElementById("money-plus").innerText = "+" + formatRupiah(amounts.filter((x) => x > 0).reduce((a, b) => a + b, 0));
+        document.getElementById("money-minus").innerText = "-" + formatRupiah(Math.abs(amounts.filter((x) => x < 0).reduce((a, b) => a + b, 0)));
 
-        balance.innerText = formatRupiah(totalThisMonth);
-        money_plus.innerText = `+${formatRupiah(incomeThisMonth)}`;
-        money_minus.innerText = `-${formatRupiah(expenseThisMonth)}`;
-
-        // RENDER LIST TETAP SEMUA TRANSAKSI TERBARU
+        list.innerHTML = "";
         transactions
           .slice()
           .reverse()
           .forEach((t) => {
-            const sign = t.amount < 0 ? "-" : "+";
             const item = document.createElement("li");
-            item.classList.add("history-item");
-            item.classList.add(t.amount < 0 ? "minus" : "plus");
-
-            const safeText = t.text.replace(/'/g, "\\'");
-            const safeCat = t.category.replace(/'/g, "\\'");
-            const userBadge = t.user ? `<span class="user-badge">${t.user}</span>` : "";
-
+            item.className = `history-item ${t.amount < 0 ? "minus" : "plus"}`;
             item.innerHTML = `
-                <div style="flex-grow:1">
-                    <div style="display:flex; align-items:center"><strong>${t.text}</strong> ${userBadge}</div>
-                    <span style="font-size:12px; color:#666">${t.category} • ${t.date.split("T")[0]}</span>
-                </div>
-                <div style="text-align:right">
-                    <span>${sign}${formatRupiah(Math.abs(t.amount))}</span>
-                    <div style="margin-top:5px">
-                        <button class="btn-mini btn-edit" onclick="startEdit('${t.id}', '${t.date}', '${safeText}', '${safeCat}', ${t.amount})">Edit</button>
-                        <button class="btn-mini btn-delete" onclick="deleteItem('${t.id}')">Hapus</button>
-                    </div>
-                </div>`;
+            <div style="flex-grow:1"><strong>${t.text}</strong> <span class="user-badge">${t.user || ""}</span><br>
+            <small>${t.category} • ${t.date.split("T")[0]}</small></div>
+            <div style="text-align:right"><span>${t.amount < 0 ? "-" : "+"}${formatRupiah(Math.abs(t.amount))}</span><br>
+            <button class="btn-mini btn-edit" onclick="startEdit('${t.id}','${t.date}','${t.text.replace(/'/g, "\\'")}','${t.category}',${t.amount})">Edit</button>
+            <button class="btn-mini btn-delete" onclick="deleteItem('${t.id}')">Hapus</button></div>`;
             list.appendChild(item);
           });
       }
@@ -395,24 +352,92 @@
         return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
       }
 
-      window.startEdit = function (id, date, text, category, amount) {
+      // --- STATS & SUMMARY ---
+      function applyFilter() {
+        const start = document.getElementById("filter-start").value;
+        const end = document.getElementById("filter-end").value;
+        const type = document.getElementById("filter-type").value;
+        const cat = document.getElementById("filter-category").value;
+
+        const filtered = allTransactions.filter((t) => {
+          const d = t.date.split("T")[0];
+          return d >= start && d <= end && (type === "all" || (type === "expense" ? t.amount < 0 : t.amount > 0)) && (cat === "all" || t.category === cat);
+        });
+        updateChart(filtered);
+      }
+
+      function updateChart(data) {
+        const ctx = document.getElementById("expenseChart").getContext("2d");
+        const type = document.getElementById("filter-type").value;
+        const showInc = type === "income";
+        document.getElementById("chart-title").innerText = showInc ? "Analisa Pemasukan" : "Analisa Pengeluaran";
+
+        const cats = {};
+        let grand = 0;
+        data.forEach((t) => {
+          if ((showInc && t.amount > 0) || (!showInc && t.amount < 0)) {
+            cats[t.category] = (cats[t.category] || 0) + Math.abs(t.amount);
+            grand += Math.abs(t.amount);
+          }
+        });
+
+        const net = data.reduce((a, b) => a + Number(b.amount), 0);
+        document.getElementById("filter-total").innerText = formatRupiah(net);
+        document.getElementById("filter-total").style.color = net >= 0 ? "var(--success)" : "var(--danger)";
+
+        if (chartInstance) chartInstance.destroy();
+        if (Object.keys(cats).length === 0) return;
+        chartInstance = new Chart(ctx, {
+          type: "doughnut",
+          data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: ["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#ec4899"] }] },
+          options: { plugins: { legend: { position: "bottom" } } },
+        });
+      }
+
+      function renderSummaryTable() {
+        const year = parseInt(document.getElementById("summary-year").value) || new Date().getFullYear();
+        const tbody = document.querySelector("#summary-table tbody");
+        tbody.innerHTML = "";
+        const yearly = allTransactions.filter((t) => new Date(t.date).getFullYear() === year);
+        const cats = [...new Set(yearly.map((t) => t.category))].sort();
+
+        cats.forEach((c) => {
+          const tr = document.createElement("tr");
+          let html = `<td>${c}</td>`;
+          for (let m = 0; m < 12; m++) {
+            const sum = yearly.filter((t) => t.category === c && new Date(t.date).getMonth() === m).reduce((a, b) => a + Number(b.amount), 0);
+            html += `<td style="color:${sum < 0 ? "var(--danger)" : sum > 0 ? "var(--success)" : "#333"}">${sum === 0 ? "-" : new Intl.NumberFormat("id-ID").format(Math.abs(sum))}</td>`;
+          }
+          tr.innerHTML = html;
+          tbody.appendChild(tr);
+        });
+      }
+
+      function populateSummaryYears() {
+        const sel = document.getElementById("summary-year");
+        const years = [...new Set(allTransactions.map((t) => new Date(t.date).getFullYear()))];
+        const cur = new Date().getFullYear();
+        if (!years.includes(cur)) years.push(cur);
+        years.sort((a, b) => b - a);
+        sel.innerHTML = years.map((y) => `<option value="${y}">${y}</option>`).join("");
+      }
+
+      window.startEdit = (id, d, txt, cat, amt) => {
         switchTab("home");
         isEditing = true;
-        document.getElementById("input-card").scrollIntoView({ behavior: "smooth" });
         document.getElementById("input-card").classList.add("editing");
         document.getElementById("form-title").innerText = "Edit Transaksi";
         document.getElementById("submit-btn").innerText = "Update";
         document.getElementById("cancel-btn").style.display = "block";
-
         document.getElementById("edit-id").value = id;
-        document.getElementById("date").value = date.split("T")[0];
-        document.getElementById("text").value = text;
-        document.getElementById("category").value = category;
-        document.getElementById("amount").value = Math.abs(amount);
-        document.getElementById("type").value = amount < 0 ? "expense" : "income";
+        document.getElementById("date").value = d.split("T")[0];
+        document.getElementById("text").value = txt;
+        document.getElementById("category").value = cat;
+        document.getElementById("amount").value = Math.abs(amt);
+        document.getElementById("type").value = amt < 0 ? "expense" : "income";
       };
 
-      window.cancelEdit = function () {
+      window.cancelEdit = () => {
         isEditing = false;
         form.reset();
         document.getElementById("date").valueAsDate = new Date();
@@ -422,159 +447,20 @@
         document.getElementById("cancel-btn").style.display = "none";
       };
 
-      window.deleteItem = function (id) {
+      window.deleteItem = (id) => {
         if (confirm("Hapus data ini?")) sendData({ action: "delete", id: id });
       };
-
-      // --- FILTER & CHART LOGIC ---
       function populateCategoryFilter(data) {
-        const catSelect = document.getElementById("filter-category");
-        const currentVal = catSelect.value;
-        const categories = [...new Set(data.map((item) => item.category))];
-
-        catSelect.innerHTML = '<option value="all">Semua Kategori</option>';
-        categories.sort().forEach((cat) => {
-          const option = document.createElement("option");
-          option.value = cat;
-          option.innerText = cat;
-          catSelect.appendChild(option);
-        });
-        catSelect.value = currentVal;
+        const sel = document.getElementById("filter-category");
+        const cats = [...new Set(data.map((t) => t.category))].sort();
+        sel.innerHTML = '<option value="all">Semua Kategori</option>' + cats.map((c) => `<option value="${c}">${c}</option>`).join("");
       }
-
-      function applyFilter() {
-        const startDate = document.getElementById("filter-start").value;
-        const endDate = document.getElementById("filter-end").value;
-        const filterType = document.getElementById("filter-type").value;
-        const filterCat = document.getElementById("filter-category").value;
-
-        const filteredData = allTransactions.filter((t) => {
-          const tDate = t.date.split("T")[0];
-          const isDateMatch = tDate >= startDate && tDate <= endDate;
-
-          let isTypeMatch = true;
-          if (filterType === "expense") isTypeMatch = t.amount < 0;
-          if (filterType === "income") isTypeMatch = t.amount > 0;
-
-          const isCatMatch = filterCat === "all" || t.category === filterCat;
-
-          return isDateMatch && isTypeMatch && isCatMatch;
-        });
-
-        updateChart(filteredData);
-      }
-
       function resetFilter() {
-        const today = new Date();
-        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-
         document.getElementById("filter-start").valueAsDate = firstDay;
         document.getElementById("filter-end").valueAsDate = today;
         document.getElementById("filter-type").value = "all";
         document.getElementById("filter-category").value = "all";
         applyFilter();
-      }
-
-      function updateChart(transactions) {
-        const ctx = document.getElementById("expenseChart").getContext("2d");
-        const filterType = document.getElementById("filter-type").value;
-
-        const categoryTotals = {};
-        let grandTotal = 0;
-
-        const showIncome = filterType === "income";
-        const chartTitle = showIncome ? "Analisa Pemasukan" : "Analisa Pengeluaran";
-        document.getElementById("chart-title").innerText = chartTitle;
-
-        transactions.forEach((t) => {
-          const amt = Number(t.amount);
-          if ((showIncome && amt > 0) || (!showIncome && amt < 0)) {
-            const cat = t.category;
-            const absAmt = Math.abs(amt);
-            categoryTotals[cat] = (categoryTotals[cat] || 0) + absAmt;
-            grandTotal += absAmt;
-          }
-        });
-
-        const netTotal = transactions.reduce((acc, curr) => acc + Number(curr.amount), 0);
-        document.getElementById("filter-total").innerText = formatRupiah(netTotal);
-        document.getElementById("filter-total").style.color = netTotal >= 0 ? "var(--success)" : "var(--danger)";
-
-        const labels = Object.keys(categoryTotals);
-        const data = Object.values(categoryTotals);
-
-        if (chartInstance) chartInstance.destroy();
-        if (labels.length === 0) return;
-
-        chartInstance = new Chart(ctx, {
-          type: "doughnut",
-          data: {
-            labels: labels,
-            datasets: [
-              {
-                data: data,
-                backgroundColor: ["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#ec4899", "#6366f1", "#14b8a6"],
-                borderWidth: 2,
-                borderColor: "#ffffff",
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 }, padding: 15 } },
-              tooltip: {
-                callbacks: {
-                  label: function (context) {
-                    let value = context.raw;
-                    let percentage = ((value / grandTotal) * 100).toFixed(1) + "%";
-                    return ` ${context.label}: ${formatRupiah(value)} (${percentage})`;
-                  },
-                },
-              },
-            },
-          },
-        });
-      }
-
-      // --- LOGIC SUMMARY TAHUNAN ---
-      function populateSummaryYears() {
-        const yearSelect = document.getElementById("summary-year");
-        const years = [...new Set(allTransactions.map((t) => new Date(t.date).getFullYear()))];
-        const currentYear = new Date().getFullYear();
-        if (!years.includes(currentYear)) years.push(currentYear);
-        years.sort((a, b) => b - a);
-
-        yearSelect.innerHTML = "";
-        years.forEach((y) => {
-          yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
-        });
-      }
-
-      function renderSummaryTable() {
-        const year = parseInt(document.getElementById("summary-year").value) || new Date().getFullYear();
-        const tbody = document.querySelector("#summary-table tbody");
-        tbody.innerHTML = "";
-
-        const yearlyData = allTransactions.filter((t) => new Date(t.date).getFullYear() === year);
-        const categories = [...new Set(yearlyData.map((t) => t.category))].sort();
-
-        categories.forEach((cat) => {
-          const tr = document.createElement("tr");
-          let rowHTML = `<td>${cat}</td>`;
-
-          for (let m = 0; m < 12; m++) {
-            const sum = yearlyData.filter((t) => t.category === cat && new Date(t.date).getMonth() === m).reduce((acc, t) => acc + Number(t.amount), 0);
-
-            const displayAmt = sum === 0 ? "-" : new Intl.NumberFormat("id-ID").format(Math.abs(sum));
-            const color = sum < 0 ? "var(--danger)" : sum > 0 ? "var(--success)" : "#333";
-
-            rowHTML += `<td style="color: ${color};">${displayAmt}</td>`;
-          }
-          tr.innerHTML = rowHTML;
-          tbody.appendChild(tr);
-        });
       }
     </script>
   </body>
