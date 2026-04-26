@@ -321,3 +321,46 @@ body {
   cursor: pointer;
   font-size: 13px;
 }
+/* --- TAMBAHAN SUMMARY --- */
+.nav-item {
+  width: 33.33%; /* Ubah dari 50% biar muat 3 menu */
+}
+
+.table-responsive {
+  overflow-x: auto;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  padding: 10px;
+  margin-top: 15px;
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 600px; /* Paksa scroll kalau layar sempit */
+}
+
+.summary-table th,
+.summary-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.summary-table th:first-child,
+.summary-table td:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: white; /* Biar kategori tetep keliatan pas discroll */
+  font-weight: bold;
+  z-index: 2;
+}
+
+.summary-table th {
+  background: var(--bg);
+  text-align: center;
+}

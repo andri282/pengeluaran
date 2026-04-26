@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
@@ -18,7 +18,7 @@
 
       <div id="view-home" class="view-section active">
         <div class="balance-card">
-          <h2>Sisa Saldo</h2>
+          <h2>Sisa Saldo (Bulan Ini)</h2>
           <h1 id="balance">Rp 0</h1>
         </div>
 
@@ -112,6 +112,38 @@
           </div>
         </div>
       </div>
+
+      <div id="view-summary" class="view-section">
+        <h3 class="text-center">Rekap Tahunan</h3>
+
+        <div class="filter-container" style="margin-bottom: 0">
+          <span class="filter-label">Pilih Tahun</span>
+          <select id="summary-year" class="filter-control" onchange="renderSummaryTable()"></select>
+        </div>
+
+        <div class="table-responsive">
+          <table class="summary-table" id="summary-table">
+            <thead>
+              <tr>
+                <th>Kategori</th>
+                <th>Jan</th>
+                <th>Feb</th>
+                <th>Mar</th>
+                <th>Apr</th>
+                <th>Mei</th>
+                <th>Jun</th>
+                <th>Jul</th>
+                <th>Agu</th>
+                <th>Sep</th>
+                <th>Okt</th>
+                <th>Nov</th>
+                <th>Des</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <div class="bottom-nav">
@@ -122,6 +154,10 @@
       <div class="nav-item" onclick="switchTab('chart')" id="nav-chart">
         <svg viewBox="0 0 24 24"><path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2 0v11h10.99c-.18-5.7-4.9-10.45-10.99-10.45zm0 13v7c5.63-.55 10.1-5.02 10.65-10.65H13z" /></svg>
         <span>Statistik</span>
+      </div>
+      <div class="nav-item" onclick="switchTab('summary')" id="nav-summary">
+        <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" /></svg>
+        <span>Summary</span>
       </div>
     </div>
 
@@ -161,8 +197,8 @@
         document.getElementById("view-" + tab).classList.add("active");
         document.getElementById("nav-" + tab).classList.add("active");
 
-        // Jika pindah ke chart, jalankan filter ulang biar chart update
         if (tab === "chart") applyFilter();
+        if (tab === "summary") renderSummaryTable();
       }
 
       // --- DATA HANDLING ---
@@ -213,10 +249,12 @@
           .then((res) => {
             loading.style.display = "none";
             if (res.result === "success") {
-              allTransactions = res.data; // Simpan data mentah ke variabel global
-              updateDOM(allTransactions); // Update List Transaksi
-              populateCategoryFilter(allTransactions); // Isi dropdown kategori
-              applyFilter(); // Jalankan filter chart
+              allTransactions = res.data;
+              updateDOM(allTransactions);
+              populateCategoryFilter(allTransactions);
+              applyFilter();
+              populateSummaryYears();
+              renderSummaryTable();
             }
           });
       }
@@ -225,7 +263,6 @@
       function populateCategoryFilter(data) {
         const catSelect = document.getElementById("filter-category");
         const currentVal = catSelect.value;
-        // Ambil kategori unik
         const categories = [...new Set(data.map((item) => item.category))];
 
         catSelect.innerHTML = '<option value="all">Semua Kategori</option>';
@@ -235,7 +272,7 @@
           option.innerText = cat;
           catSelect.appendChild(option);
         });
-        catSelect.value = currentVal; // Balikin pilihan user jika ada
+        catSelect.value = currentVal;
       }
 
       function applyFilter() {
@@ -244,12 +281,10 @@
         const filterType = document.getElementById("filter-type").value;
         const filterCat = document.getElementById("filter-category").value;
 
-        // Lakukan penyaringan data
         const filteredData = allTransactions.filter((t) => {
-          const tDate = t.date.split("T")[0]; // Ambil YYYY-MM-DD
+          const tDate = t.date.split("T")[0];
           const isDateMatch = tDate >= startDate && tDate <= endDate;
 
-          // Logika Tipe (Expense/Income)
           let isTypeMatch = true;
           if (filterType === "expense") isTypeMatch = t.amount < 0;
           if (filterType === "income") isTypeMatch = t.amount > 0;
@@ -280,39 +315,29 @@
         const categoryTotals = {};
         let grandTotal = 0;
 
-        // Tentukan apa yang mau ditampilkan di chart
-        // Kalau filter "Income", tampilkan Income. Selain itu tampilkan Expense (default).
         const showIncome = filterType === "income";
         const chartTitle = showIncome ? "Analisa Pemasukan" : "Analisa Pengeluaran";
         document.getElementById("chart-title").innerText = chartTitle;
 
         transactions.forEach((t) => {
           const amt = Number(t.amount);
-          // Jika mode Income, ambil yg positif. Jika mode Expense/All, ambil yg negatif
           if ((showIncome && amt > 0) || (!showIncome && amt < 0)) {
             const cat = t.category;
             const absAmt = Math.abs(amt);
             categoryTotals[cat] = (categoryTotals[cat] || 0) + absAmt;
-            grandTotal += absAmt; // Total untuk chart
+            grandTotal += absAmt;
           }
         });
 
-        // Update Text Total Filter di bawah chart
-        // Hitung total bersih dari data yang difilter (Income - Expense)
         const netTotal = transactions.reduce((acc, curr) => acc + Number(curr.amount), 0);
         document.getElementById("filter-total").innerText = formatRupiah(netTotal);
-        // Beri warna hijau jika plus, merah jika minus
         document.getElementById("filter-total").style.color = netTotal >= 0 ? "var(--success)" : "var(--danger)";
 
         const labels = Object.keys(categoryTotals);
         const data = Object.values(categoryTotals);
 
         if (chartInstance) chartInstance.destroy();
-
-        if (labels.length === 0) {
-          // Tampilkan chart kosong atau pesan jika tidak ada data
-          return;
-        }
+        if (labels.length === 0) return;
 
         chartInstance = new Chart(ctx, {
           type: "doughnut",
@@ -346,7 +371,7 @@
         });
       }
 
-      // --- DOM UPDATES ---
+      // --- DOM UPDATES (DIPERBARUI UNTUK SISA SALDO BULAN INI) ---
       function updateDOM(transactions) {
         const list = document.getElementById("list");
         const balance = document.getElementById("balance");
@@ -356,15 +381,26 @@
         list.innerHTML = "";
         if (!transactions) return;
 
-        const amounts = transactions.map((t) => Number(t.amount));
-        const total = amounts.reduce((acc, item) => (acc += item), 0);
-        const income = amounts.filter((item) => item > 0).reduce((acc, item) => (acc += item), 0);
-        const expense = amounts.filter((item) => item < 0).reduce((acc, item) => (acc += item), 0) * -1;
+        // FILTER HANYA BULAN INI UNTUK CARD ATAS
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
 
-        balance.innerText = formatRupiah(total);
-        money_plus.innerText = `+${formatRupiah(income)}`;
-        money_minus.innerText = `-${formatRupiah(expense)}`;
+        const currentMonthTransactions = transactions.filter((t) => {
+          const tDate = new Date(t.date);
+          return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
+        });
 
+        const amountsThisMonth = currentMonthTransactions.map((t) => Number(t.amount));
+        const totalThisMonth = amountsThisMonth.reduce((acc, item) => (acc += item), 0);
+        const incomeThisMonth = amountsThisMonth.filter((item) => item > 0).reduce((acc, item) => (acc += item), 0);
+        const expenseThisMonth = amountsThisMonth.filter((item) => item < 0).reduce((acc, item) => (acc += item), 0) * -1;
+
+        balance.innerText = formatRupiah(totalThisMonth);
+        money_plus.innerText = `+${formatRupiah(incomeThisMonth)}`;
+        money_minus.innerText = `-${formatRupiah(expenseThisMonth)}`;
+
+        // RENDER LIST TETAP SEMUA TRANSAKSI TERBARU
         transactions
           .slice()
           .reverse()
@@ -428,6 +464,45 @@
       window.deleteItem = function (id) {
         if (confirm("Hapus data ini?")) sendData({ action: "delete", id: id });
       };
+
+      // --- LOGIC SUMMARY TAHUNAN ---
+      function populateSummaryYears() {
+        const yearSelect = document.getElementById("summary-year");
+        const years = [...new Set(allTransactions.map((t) => new Date(t.date).getFullYear()))];
+        const currentYear = new Date().getFullYear();
+        if (!years.includes(currentYear)) years.push(currentYear);
+        years.sort((a, b) => b - a);
+
+        yearSelect.innerHTML = "";
+        years.forEach((y) => {
+          yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+        });
+      }
+
+      function renderSummaryTable() {
+        const year = parseInt(document.getElementById("summary-year").value) || new Date().getFullYear();
+        const tbody = document.querySelector("#summary-table tbody");
+        tbody.innerHTML = "";
+
+        const yearlyData = allTransactions.filter((t) => new Date(t.date).getFullYear() === year);
+        const categories = [...new Set(yearlyData.map((t) => t.category))].sort();
+
+        categories.forEach((cat) => {
+          const tr = document.createElement("tr");
+          let rowHTML = `<td>${cat}</td>`;
+
+          for (let m = 0; m < 12; m++) {
+            const sum = yearlyData.filter((t) => t.category === cat && new Date(t.date).getMonth() === m).reduce((acc, t) => acc + Number(t.amount), 0);
+
+            const displayAmt = sum === 0 ? "-" : new Intl.NumberFormat("id-ID").format(Math.abs(sum));
+            const color = sum < 0 ? "var(--danger)" : sum > 0 ? "var(--success)" : "#333";
+
+            rowHTML += `<td style="color: ${color};">${displayAmt}</td>`;
+          }
+          tr.innerHTML = rowHTML;
+          tbody.appendChild(tr);
+        });
+      }
     </script>
   </body>
 </html>
