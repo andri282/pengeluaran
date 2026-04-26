@@ -78,7 +78,7 @@
           </form>
         </div>
 
-        <h3>Riwayat Terakhir</h3>
+        <h3>10 Riwayat Terakhir</h3>
         <ul id="list" class="history-list"></ul>
       </div>
 
@@ -175,6 +175,7 @@
     </div>
 
     <script>
+      // MASUKKAN URL SCRIPT LO DI SINI
       const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwkEam74ZMFuskgfq9nzEkn3imJfPRQpV38SleairvjbKO_W28iVkJ8tS8G8fdwQ2Ze7Q/exec";
 
       const currentUser = localStorage.getItem("currentUser");
@@ -241,8 +242,32 @@
             } else {
               alert("Gagal: " + res.message);
             }
+          })
+          .catch((err) => {
+            loading.style.display = "none";
+            alert("Error Koneksi.");
           });
       }
+
+      // --- FIX: TAMBAHAN KODE FORM MANUAL YANG SEMPAT HILANG ---
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        const type = document.getElementById("type").value;
+        const amountVal = document.getElementById("amount").value;
+
+        const data = {
+          action: isEditing ? "edit" : "add",
+          id: isEditing ? document.getElementById("edit-id").value : new Date().getTime(),
+          date: document.getElementById("date").value,
+          type: type,
+          text: document.getElementById("text").value,
+          category: document.getElementById("category").value,
+          amount: type === "expense" ? -Math.abs(amountVal) : Math.abs(amountVal),
+          user: currentUser,
+        };
+        sendData(data);
+      });
+      // ---------------------------------------------------------
 
       // --- COPAS WA LOGIC ---
       window.processBulk = function () {
@@ -332,9 +357,12 @@
         document.getElementById("money-minus").innerText = "-" + formatRupiah(Math.abs(amounts.filter((x) => x < 0).reduce((a, b) => a + b, 0)));
 
         list.innerHTML = "";
+
+        // --- FIX: LIMIT DATA YANG TAMPIL JADI 10 TERAKHIR AJA ---
         transactions
           .slice()
           .reverse()
+          .slice(0, 10)
           .forEach((t) => {
             const item = document.createElement("li");
             item.className = `history-item ${t.amount < 0 ? "minus" : "plus"}`;
